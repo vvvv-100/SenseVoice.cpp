@@ -13,13 +13,15 @@ set(SOURCE_FILES
         sense-voice.cc
         silero-vad.h
         silero-vad.cc
+        sense_voice_c_api.cpp # <== 你的包装器
 )
 
-add_library(sense-voice-core STATIC ${SOURCE_FILES})
+# 改为生成动态链接库 SHARED
+add_library(sensevoice SHARED ${SOURCE_FILES})
 
 set(ExampleLibs ggml)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
     list(APPEND ExampleLibs stdc++fs)
 endif()
 
-target_link_libraries(sense-voice-core PRIVATE ${ExampleLibs})
+target_link_libraries(sensevoice PRIVATE ${ExampleLibs})
