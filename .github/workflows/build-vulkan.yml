@@ -1,0 +1,57 @@
+name: Build SenseVoice Vulkan (Win64)
+
+on:
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  build-vulkan:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: lovemefan/SenseVoice.cpp
+          submodules: recursive
+
+      - name: Install Vulkan SDK
+        run: |
+          # Download LunarG Vulkan SDK installer (offline version)
+          $url = "https://sdk.lunarg.com/sdk/download/1.4.304.1/windows/VulkanSDK-1.4.304.1-Installer.exe"
+          Invoke-WebRequest -Uri $url -OutFile vulkan-sdk.exe
+          # Silent install
+          Start-Process -FilePath .\vulkan-sdk.exe -ArgumentList "/S" -Wait -NoNewWindow
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DGGML_VULKAN=ON `
+            -DGGML_OPENBLAS=OFF `
+            -DGGML_NATIVE=OFF
+
+      - name: Build
+        run: |
+          cd build
+          cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Collect binaries
+        run: |
+          mkdir artifact
+          copy build\bin\Release\*.exe artifact\
+          # 如果有需要运行时的 dll，可以从系统路径复制（通常情况下 Vulkan Loader 系统自带）
+          # 如果模型需要随附，可另外说明
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sense-voice-vulkan-win64
+          path: artifact/
