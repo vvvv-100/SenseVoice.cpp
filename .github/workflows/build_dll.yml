@@ -4,34 +4,51 @@ on:
   push:
     branches: [ main, master ]
     paths:
-      - 'sense-voice/csrc/**'   # 只有这个目录改变才触发
-  workflow_dispatch:            # 允许手动触发
+      - 'sense-voice/csrc/**'
+  workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
+
     steps:
-      - name: 检出代码（含子模块）
+      - name: 检出代码（含子模块 ggml）
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: 配置 MSVC 环境
+      - name: 配置 MSVC 编译环境
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
 
-      - name: 用 CMake 生成构建系统
+      - name: 修补 CMakeLists.txt（自动添加 cmake_minimum_required 和 project）
+        shell: pwsh
+        run: |
+          $file = "sense-voice/csrc/CMakeLists.txt"
+          $content = Get-Content -Path $file -Raw
+          # 在文件最前面插入两行，如果文件里本来没有的话
+          if ($content -notmatch "cmake_minimum_required") {
+            $newContent = "cmake_minimum_required(VERSION 3.12)`nproject(sensevoice CXX)`n" + $content
+            Set-Content -Path $file -Value $newContent -NoNewline
+            Write-Host "CMakeLists.txt 已修补"
+          }
+
+      - name: 安装 Ninja（如果系统里没有）
+        run: choco install ninja -y --no-progress
+        if: runner.os == 'Windows'
+
+      - name: 用 CMake + Ninja 配置项目
         run: |
           mkdir build
           cd build
-          cmake ..\sense-voice\csrc -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+          cmake ..\sense-voice\csrc -G "Ninja" -DCMAKE_BUILD_TYPE=Release
 
       - name: 编译 DLL
-        run: cmake --build .\build --config Release --target sensevoice
+        run: cmake --build .\build
 
-      - name: 上传 DLL
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: sensevoice-dll
-          path: build/Release/sensevoice.dll
+          path: build/sensevoice.dll
