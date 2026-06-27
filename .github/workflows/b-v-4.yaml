@@ -1,4 +1,4 @@
-name: Build SenseVoice Vulkan (Win64) - Final
+name: Build SenseVoice Vulkan (Win64) - Static Final
 
 on:
   workflow_dispatch:
@@ -24,14 +24,16 @@ jobs:
       - name: Install Ninja
         run: choco install ninja -y --no-progress
 
-      - name: Install Vulkan via vcpkg (static)
+      - name: Install Vulkan via vcpkg (static libs + dynamic shaderc for glslc)
         run: |
           cd C:\vcpkg
-          .\vcpkg.exe install vulkan-headers vulkan-loader shaderc --triplet x64-windows-static
+          # 静态 Vulkan 库（用于链接）
+          .\vcpkg.exe install vulkan-headers:x64-windows-static vulkan-loader:x64-windows-static
+          # 动态 shaderc（仅为了得到 glslc.exe 工具，不会链接到程序）
+          .\vcpkg.exe install shaderc:x64-windows
 
-      - name: Configure CMake (Explicit Vulkan paths)
+      - name: Configure CMake
         run: |
-          $vcpkg_root = "C:/vcpkg/installed/x64-windows-static"
           mkdir build
           cd build
           cmake .. -G Ninja `
@@ -42,9 +44,7 @@ jobs:
             -DGGML_NATIVE=OFF `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static `
-            -DVulkan_INCLUDE_DIRS="$vcpkg_root/include" `
-            -DVulkan_LIBRARY="$vcpkg_root/lib/vulkan-1.lib" `
-            -DVulkan_GLSLC_EXECUTABLE="$vcpkg_root/tools/shaderc/glslc.exe"
+            -DVulkan_GLSLC_EXECUTABLE="C:/vcpkg/installed/x64-windows/tools/shaderc/glslc.exe"
           Write-Host "=== Checking Vulkan config ==="
           cmake -LA .. | Select-String "GGML_VULKAN|Vulkan"
 
@@ -53,7 +53,7 @@ jobs:
           cd build
           ninja
 
-      - name: Collect
+      - name: Collect and Upload
         run: |
           mkdir artifact
           copy build\bin\*.exe artifact\
@@ -61,5 +61,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sense-voice-vulkan-final
+          name: sense-voice-vulkan-static-final
           path: artifact/
