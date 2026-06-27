@@ -1,0 +1,37 @@
+name: Build sensevoice.dll
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'sense-voice/csrc/**'   # 只有这个目录改变才触发
+  workflow_dispatch:            # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码（含子模块）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 配置 MSVC 环境
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: 用 CMake 生成构建系统
+        run: |
+          mkdir build
+          cd build
+          cmake ..\sense-voice\csrc -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: 编译 DLL
+        run: cmake --build .\build --config Release --target sensevoice
+
+      - name: 上传 DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensevoice-dll
+          path: build/Release/sensevoice.dll
