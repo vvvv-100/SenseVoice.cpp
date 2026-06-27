@@ -24,11 +24,9 @@ jobs:
       - name: Install Ninja
         run: choco install ninja -y --no-progress
 
-      # 替换为当前活跃维护的插件，兼容最新的 actions/cache v4
       - name: Install Vulkan SDK
         uses: jakoch/install-vulkan-sdk-action@v1
         with:
-          # 自动获取最新版 Vulkan SDK
           cache: true
 
       - name: Configure CMake
@@ -55,6 +53,7 @@ jobs:
         run: |
           mkdir artifact
           copy build\bin\*.exe artifact\
+          copy build\bin\*.dll artifact\
 
       - uses: actions/upload-artifact@v4
         with:
