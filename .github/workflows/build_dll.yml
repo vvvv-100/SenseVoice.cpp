@@ -51,15 +51,7 @@ jobs:
           Set-Content -Path $file -Value $content -NoNewline
           Write-Host "CMakeLists.txt 修补完成"
 
-      - name: 临时注释未实现的 sense_voice_free 调用
-        shell: pwsh
-        run: |
-          $file = "sense-voice/csrc/sense_voice_c_api.cpp"
-          $content = Get-Content -Path $file -Raw
-          # 替换 sense_voice_free(ctx); 为注释
-          $content = $content -replace 'sense_voice_free\(ctx\);', '// sense_voice_free(ctx); // FIXME: need correct release function'
-          Set-Content -Path $file -Value $content -NoNewline
-          Write-Host "已注释 sense_voice_free 调用"
+
 
       - name: 打印 sense-voice.h 内容（用于后续分析）
         shell: pwsh
