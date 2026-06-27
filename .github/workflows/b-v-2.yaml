@@ -17,30 +17,14 @@ jobs:
           repository: lovemefan/SenseVoice.cpp
           submodules: recursive
 
-      # ---------- 1. 安装 Vulkan Runtime（只需几十秒） ----------
-      - name: Install Vulkan Runtime
+      # ---------- 1. 用 vcpkg 安装 Vulkan（头文件 + lib + dll） ----------
+      - name: Install Vulkan via vcpkg
         run: |
-          # 下载在线安装器（约 2.5 MB）
-          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/1.4.304.1/windows/VulkanRT-1.4.304.1-Installer.exe" -OutFile vulkan-rt.exe
-          # 静默安装（仅包含 vulkan-1.dll 和驱动）
-          Start-Process -FilePath .\vulkan-rt.exe -ArgumentList "/S" -Wait -NoNewWindow
-          # 确认 vulkan-1.dll 在 System32 中
-          if (Test-Path "C:\Windows\System32\vulkan-1.dll") {
-            Write-Host "Vulkan Runtime installed."
-          } else {
-            Write-Host "Installation may have failed, but continuing..."
-          }
+          cd C:\vcpkg
+          .\vcpkg.exe install vulkan-headers vulkan-loader --triplet x64-windows
+          # 安装完成后，vcpkg 会提供库文件和头文件
 
-      # ---------- 2. 下载头文件（仅几十 MB） ----------
-      - name: Download Vulkan Headers
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.304.1.zip" -OutFile headers.zip
-          Expand-Archive headers.zip -DestinationPath .
-          # 设置环境变量，供 CMake 使用
-          $headers_dir = "$pwd\Vulkan-Headers-vulkan-sdk-1.4.304.1"
-          "VULKAN_SDK=$headers_dir" >> $env:GITHUB_ENV
-
-      # ---------- 3. 编译 SenseVoice ----------
+      # ---------- 2. 编译 SenseVoice ----------
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
@@ -52,20 +36,21 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DGGML_VULKAN=ON `
             -DGGML_OPENBLAS=OFF `
-            -DGGML_NATIVE=OFF
+            -DGGML_NATIVE=OFF `
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
         run: |
           cd build
           cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
 
-      # ---------- 4. 打包 ----------
+      # ---------- 3. 打包，并带上 vulkan-1.dll ----------
       - name: Collect and Upload
         run: |
           mkdir artifact
           copy build\bin\Release\*.exe artifact\
-          # vulkan-1.dll 已在系统目录，通常不需要再随附，但为了移植性，可以复制一份
-          copy C:\Windows\System32\vulkan-1.dll artifact\
+          # 从 vcpkg 安装目录找到 vulkan-1.dll
+          copy C:\vcpkg\packages\vulkan-loader_x64-windows\bin\vulkan-1.dll artifact\
 
       - uses: actions/upload-artifact@v4
         with:
