@@ -1,0 +1,74 @@
+name: Build SenseVoice Vulkan (Win64)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-vulkan:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: lovemefan/SenseVoice.cpp
+          submodules: recursive
+
+      - name: Prepare Vulkan Headers and Loader
+        run: |
+          # 下载 Vulkan-Headers（头文件，几十 MB）
+          Invoke-WebRequest -Uri "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.304.1.zip" -OutFile headers.zip
+          Expand-Archive headers.zip -DestinationPath .
+          $headers_dir = "$pwd\Vulkan-Headers-vulkan-sdk-1.4.304.1"
+
+          # 下载 Vulkan-Loader（运行时 dll，几十 MB）
+          Invoke-WebRequest -Uri "https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.304.1.zip" -OutFile loader.zip
+          Expand-Archive loader.zip -DestinationPath .
+          $loader_dir = "$pwd\Vulkan-Loader-vulkan-sdk-1.4.304.1"
+
+          # 编译 Vulkan Loader (生成 vulkan-1.dll)
+          cd $loader_dir
+          mkdir build
+          cd build
+          cmake .. -G "Visual Studio 17 2022" -A x64 -DUPDATE_DEPS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+
+          # 设置环境变量供后续 CMake 使用
+          "VULKAN_SDK=$pwd\.." >> $env:GITHUB_ENV
+          $dll_path = "$pwd\loader\Release\vulkan-1.dll"
+          "VULKAN_LOADER_DLL=$dll_path" >> $env:GITHUB_ENV
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure CMake
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DGGML_VULKAN=ON `
+            -DGGML_OPENBLAS=OFF `
+            -DGGML_NATIVE=OFF `
+            -DVulkan_INCLUDE_DIRS="${{ env.VULKAN_SDK }}\include" `
+            -DVulkan_LIBRARY="${{ env.VULKAN_LOADER_DLL }}"
+
+      - name: Build
+        run: |
+          cd build
+          cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Collect and Upload
+        run: |
+          mkdir artifact
+          copy build\bin\Release\*.exe artifact\
+          copy ${{ env.VULKAN_LOADER_DLL }} artifact\vulkan-1.dll
+          # 可选: copy 其他需要的 dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sense-voice-vulkan-win64
+          path: artifact/
