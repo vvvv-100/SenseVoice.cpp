@@ -30,9 +30,17 @@ EXPORT struct sense_voice_context* sv_init(const char* model_path) {
 }
 
 EXPORT void sv_free(struct sense_voice_context* ctx) {
-    if (ctx) {
-        sense_voice_free(ctx);
+    if (!ctx) return;
+
+    // 1. 释放 state（内部包含 VAD buffer、编码器状态等）
+    if (ctx->state) {
+        sense_voice_free_state(ctx->state);
     }
+
+    // 2. 释放 context 本身
+    //    根据 sense_voice_small_init_from_file_with_params 的实现，
+    //    ctx 是用 new 分配的，因此用 delete 确保 C++ 对象析构
+    delete ctx;
 }
 
 EXPORT void sv_vad_reset(struct sense_voice_context* ctx) {
