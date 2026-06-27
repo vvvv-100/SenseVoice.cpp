@@ -12,42 +12,64 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: 检出代码（含子模块 ggml）
+      - name: 检出代码（包含子模块标记）
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: recursive   # 第一步拉取
 
-      - name: 配置 MSVC 编译环境
+      - name: 强制初始化所有子模块（确保 ggml 完整）
+        shell: pwsh
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          # 验证 ggml 核心文件是否存在
+          if (!(Test-Path "sense-voice/csrc/third-party/ggml/CMakeLists.txt")) {
+            Write-Error "ggml 子模块未成功拉取，请检查 .gitmodules 中 ggml 的 URL 或网络"
+            exit 1
+          }
+          Write-Host "ggml 子模块就绪"
+
+      - name: 配置 MSVC 编译器
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
 
-      - name: 修补 CMakeLists.txt（自动添加 cmake_minimum_required 和 project）
+      - name: 修补 CMakeLists.txt（自动添加必要声明和 ggml 子目录）
         shell: pwsh
         run: |
           $file = "sense-voice/csrc/CMakeLists.txt"
           $content = Get-Content -Path $file -Raw
-          # 在文件最前面插入两行，如果文件里本来没有的话
+
+          # 如果文件头部没有 cmake_minimum_required，插入标准声明
           if ($content -notmatch "cmake_minimum_required") {
-            $newContent = "cmake_minimum_required(VERSION 3.12)`nproject(sensevoice CXX)`n" + $content
-            Set-Content -Path $file -Value $newContent -NoNewline
-            Write-Host "CMakeLists.txt 已修补"
+            $header = "cmake_minimum_required(VERSION 3.12)`nproject(sensevoice CXX)`n"
+            $content = $header + $content
           }
 
-      - name: 安装 Ninja（如果系统里没有）
+          # 确保添加 ggml 子目录（关键！）
+          if ($content -notmatch "add_subdirectory\(.*ggml") {
+            # 在 project 声明后插入
+            $content = $content -replace "(project\(sensevoice CXX\))", "`$1`nadd_subdirectory(third-party/ggml)"
+            Write-Host "已插入 add_subdirectory(third-party/ggml)"
+          }
+
+          Set-Content -Path $file -Value $content -NoNewline
+          Write-Host "CMakeLists.txt 修补完成"
+
+      - name: 安装 Ninja 构建工具
         run: choco install ninja -y --no-progress
         if: runner.os == 'Windows'
 
-      - name: 用 CMake + Ninja 配置项目
+      - name: CMake 配置（Ninja + Release）
         run: |
           mkdir build
           cd build
           cmake ..\sense-voice\csrc -G "Ninja" -DCMAKE_BUILD_TYPE=Release
 
-      - name: 编译 DLL
+      - name: 编译 sensevoice.dll
         run: cmake --build .\build
 
-      - name: 上传产物
+      - name: 上传 DLL 产物
         uses: actions/upload-artifact@v4
         with:
           name: sensevoice-dll
