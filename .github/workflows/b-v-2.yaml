@@ -17,22 +17,22 @@ jobs:
           repository: lovemefan/SenseVoice.cpp
           submodules: recursive
 
-      # ---------- 1. 初始化 MSVC 环境（提供 cl.exe 和 ninja） ----------
+      # ---------- 1. 初始化 MSVC 环境 ----------
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
-      # ---------- 2. 安装 Ninja（如果系统中没有） ----------
+      # ---------- 2. 安装 Ninja ----------
       - name: Install Ninja
         run: choco install ninja -y --no-progress
 
-      # ---------- 3. 用 vcpkg 安装 Vulkan ----------
+      # ---------- 3. 用 vcpkg 安装 Vulkan（头文件 + 加载器 + shader编译器） ----------
       - name: Install Vulkan via vcpkg
         run: |
           cd C:\vcpkg
-          .\vcpkg.exe install vulkan-headers vulkan-loader --triplet x64-windows
+          .\vcpkg.exe install vulkan-headers vulkan-loader shaderc --triplet x64-windows
 
-      # ---------- 4. 配置 CMake（使用 Ninja 生成器） ----------
+      # ---------- 4. 配置 CMake（指定 glslc 路径） ----------
       - name: Configure CMake
         run: |
           mkdir build
@@ -42,7 +42,8 @@ jobs:
             -DGGML_VULKAN=ON `
             -DGGML_OPENBLAS=OFF `
             -DGGML_NATIVE=OFF `
-            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DVulkan_GLSLC_EXECUTABLE="C:/vcpkg/installed/x64-windows/tools/shaderc/glslc.exe"
 
       # ---------- 5. 编译 ----------
       - name: Build
