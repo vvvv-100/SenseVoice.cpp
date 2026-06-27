@@ -17,39 +17,44 @@ jobs:
           repository: lovemefan/SenseVoice.cpp
           submodules: recursive
 
-      # ---------- 1. 用 vcpkg 安装 Vulkan（头文件 + lib + dll） ----------
+      # ---------- 1. 初始化 MSVC 环境（提供 cl.exe 和 ninja） ----------
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # ---------- 2. 安装 Ninja（如果系统中没有） ----------
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+
+      # ---------- 3. 用 vcpkg 安装 Vulkan ----------
       - name: Install Vulkan via vcpkg
         run: |
           cd C:\vcpkg
           .\vcpkg.exe install vulkan-headers vulkan-loader --triplet x64-windows
-          # 安装完成后，vcpkg 会提供库文件和头文件
 
-      # ---------- 2. 编译 SenseVoice ----------
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
+      # ---------- 4. 配置 CMake（使用 Ninja 生成器） ----------
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          cmake .. -G "Visual Studio 17 2022" -A x64 `
+          cmake .. -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DGGML_VULKAN=ON `
             -DGGML_OPENBLAS=OFF `
             -DGGML_NATIVE=OFF `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
+      # ---------- 5. 编译 ----------
       - name: Build
         run: |
           cd build
-          cmake --build . --config Release -j $env:NUMBER_OF_PROCESSORS
+          ninja
 
-      # ---------- 3. 打包，并带上 vulkan-1.dll ----------
+      # ---------- 6. 打包上传 ----------
       - name: Collect and Upload
         run: |
           mkdir artifact
-          copy build\bin\Release\*.exe artifact\
-          # 从 vcpkg 安装目录找到 vulkan-1.dll
+          copy build\bin\*.exe artifact\
           copy C:\vcpkg\packages\vulkan-loader_x64-windows\bin\vulkan-1.dll artifact\
 
       - uses: actions/upload-artifact@v4
