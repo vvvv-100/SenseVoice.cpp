@@ -1,0 +1,65 @@
+name: Build SenseVoice Vulkan (Win64) - Final
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: lovemefan/SenseVoice.cpp
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+
+      - name: Install Vulkan via vcpkg (static)
+        run: |
+          cd C:\vcpkg
+          .\vcpkg.exe install vulkan-headers vulkan-loader shaderc --triplet x64-windows-static
+
+      - name: Configure CMake (Explicit Vulkan paths)
+        run: |
+          $vcpkg_root = "C:/vcpkg/installed/x64-windows-static"
+          mkdir build
+          cd build
+          cmake .. -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+            -DGGML_VULKAN=ON `
+            -DGGML_OPENBLAS=OFF `
+            -DGGML_NATIVE=OFF `
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DVulkan_INCLUDE_DIRS="$vcpkg_root/include" `
+            -DVulkan_LIBRARY="$vcpkg_root/lib/vulkan-1.lib" `
+            -DVulkan_GLSLC_EXECUTABLE="$vcpkg_root/tools/shaderc/glslc.exe"
+          Write-Host "=== Checking Vulkan config ==="
+          cmake -LA .. | Select-String "GGML_VULKAN|Vulkan"
+
+      - name: Build
+        run: |
+          cd build
+          ninja
+
+      - name: Collect
+        run: |
+          mkdir artifact
+          copy build\bin\*.exe artifact\
+          copy C:\vcpkg\installed\x64-windows-static\bin\vulkan-1.dll artifact\
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sense-voice-vulkan-final
+          path: artifact/
