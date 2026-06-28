@@ -1,0 +1,95 @@
+name: Build sensevoice.dll
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'sense-voice/csrc/**'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码（含子模块 ggml）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 强制初始化所有子模块
+        shell: pwsh
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          if (!(Test-Path "sense-voice/csrc/third-party/ggml/CMakeLists.txt")) {
+            Write-Error "ggml 子模块未成功拉取"
+            exit 1
+          }
+          Write-Host "ggml 子模块就绪"
+
+      - name: 配置 MSVC 编译器
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: 修补 CMakeLists.txt（添加项目声明、ggml 子目录、动态库和 C API 文件）
+        shell: pwsh
+        run: |
+          $file = "sense-voice/csrc/CMakeLists.txt"
+          $content = Get-Content -Path $file -Raw
+
+          # 1. 如果缺失 cmake_minimum_required 和 project，则在文件头插入
+          if ($content -notmatch "cmake_minimum_required") {
+            $header = "cmake_minimum_required(VERSION 3.12)`nproject(sensevoice CXX)`n"
+            $content = $header + $content
+          }
+
+          # 2. 确保添加 ggml 子目录（只添加一次）
+          if ($content -notmatch "add_subdirectory\(.*ggml") {
+            $content = $content -replace "(project\(sensevoice CXX\))", "`$1`nadd_subdirectory(third-party/ggml)"
+          }
+
+          # 3. 在 SOURCE_FILES 列表末尾追加 sense_voice_c_api.cpp
+          if ($content -notmatch "sense_voice_c_api\.cpp") {
+            $content = $content -replace "(silero-vad\.cc)", "`$1`n        sense_voice_c_api.cpp"
+          }
+
+          # 4. 将 add_library 的 STATIC 改为 SHARED，并统一目标名为 sensevoice
+          $content = $content -replace 'add_library\(sense-voice-core STATIC', 'add_library(sensevoice SHARED'
+          # 如果原文件没有我们的目标，可能叫其他名字，再补一个通用替换
+          $content = $content -replace 'add_library\(sense-voice-core', 'add_library(sensevoice SHARED'
+
+          # 5. 修改 target_link_libraries 的目标名为 sensevoice
+          $content = $content -replace 'target_link_libraries\(sense-voice-core', 'target_link_libraries(sensevoice'
+
+          Set-Content -Path $file -Value $content -NoNewline
+          Write-Host "CMakeLists.txt 修补完成"
+
+      - name: 强制禁用 fbank 调试文件输出
+        shell: pwsh
+        run: |
+          $file = "sense-voice/csrc/sense-voice-frontend.cc"
+          $content = Get-Content -Path $file -Raw
+          # 将所有的 if (debug) 替换为 if (false)，彻底禁止写文件
+          $content = $content -replace 'if \(debug\)', 'if (false)'
+          Set-Content -Path $file -Value $content -NoNewline
+          Write-Host "已禁用 fbank 调试文件写入"
+
+      - name: 安装 Ninja
+        run: choco install ninja -y --no-progress
+
+      - name: CMake 配置 (Release)
+        run: |
+          mkdir build
+          cd build
+          cmake ..\sense-voice\csrc -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+
+      - name: 编译 sensevoice.dll
+        run: cmake --build .\build
+
+      - name: 上传 DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensevoice-dll
+          path: build/sensevoice.dll
